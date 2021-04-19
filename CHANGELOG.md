@@ -1,5 +1,8 @@
-### NEXT_VERSION_TYPE=MAJOR|MINOR|PATCH
+### NEXT_VERSION_TYPE=MAJOR
 ### NEXT_VERSION_DESCRIPTION_BEGIN
+
+* Сборка проекта переведена на library-project-plugin.
+
 ### NEXT_VERSION_DESCRIPTION_END
 ## [11.0.2]() (04-02-2021)
 
