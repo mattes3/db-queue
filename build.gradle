@@ -6,4 +6,4 @@ apply plugin: "ru.yoomoney.gradle.plugins.library-project-plugin"
 
 apply from: 'dependencies.gradle'
 
-artifactID='db-queue'
+artifactId='db-queue'
