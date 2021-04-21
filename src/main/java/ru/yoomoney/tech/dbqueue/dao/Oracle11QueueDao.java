@@ -1,15 +1,14 @@
 package ru.yoomoney.tech.dbqueue.dao;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import org.springframework.jdbc.core.JdbcOperations;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import ru.yoomoney.tech.dbqueue.api.EnqueueParams;
 import ru.yoomoney.tech.dbqueue.config.QueueTableSchema;
 import ru.yoomoney.tech.dbqueue.settings.QueueLocation;
 
 import javax.annotation.Nonnull;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,20 +30,19 @@ public class Oracle11QueueDao implements QueueDao {
     private final Map<String, String> nextSequenceSqlCache = new ConcurrentHashMap<>();
 
     @Nonnull
-    private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final Database database;
     @Nonnull
     private final QueueTableSchema queueTableSchema;
 
     /**
      * Constructor
      *
-     * @param jdbcTemplate     Reference to Spring JDBC template.
+     * @param database       Reference to JDBC data source for the queue.
      * @param queueTableSchema Queue table scheme.
      */
-    public Oracle11QueueDao(@Nonnull JdbcOperations jdbcTemplate,
-                            @Nonnull QueueTableSchema queueTableSchema) {
+    public Oracle11QueueDao(Database database, QueueTableSchema queueTableSchema) {
+        this.database = database;
         this.queueTableSchema = requireNonNull(queueTableSchema);
-        this.jdbcTemplate = new NamedParameterJdbcTemplate(requireNonNull(jdbcTemplate));
     }
 
     @Override
@@ -56,19 +54,22 @@ public class Oracle11QueueDao implements QueueDao {
         String idSequence = location.getIdSequence()
                 .orElseThrow(() -> new IllegalStateException("id sequence must be specified for oracle 11g database"));
 
-        Long generatedId = Objects.requireNonNull(jdbcTemplate.getJdbcTemplate().queryForObject(
+        Long generatedId = Objects.requireNonNull(database.selectOne(
                 nextSequenceSqlCache.computeIfAbsent(idSequence, this::createNextSequenceSql), Long.class));
 
-        MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("queueName", location.getQueueId().asString())
-                .addValue("payload", enqueueParams.getPayload())
-                .addValue("executionDelay", enqueueParams.getExecutionDelay().getSeconds())
-                .addValue("id", generatedId);
+        Map<String, Object> params = new HashMap<String, Object>() {
+            {
+                put("queueName", location.getQueueId().asString());
+                put("payload", enqueueParams.getPayload());
+                put("executionDelay", enqueueParams.getExecutionDelay().getSeconds());
+                put("id", generatedId);
+            }
+        };
 
-        queueTableSchema.getExtFields().forEach(paramName -> params.addValue(paramName, null));
-        enqueueParams.getExtData().forEach(params::addValue);
+        queueTableSchema.getExtFields().forEach(paramName -> params.put(paramName, null));
+        params.putAll(enqueueParams.getExtData());
 
-        jdbcTemplate.update(enqueueSqlCache.computeIfAbsent(location, this::createEnqueueSql), params);
+        database.update(enqueueSqlCache.computeIfAbsent(location, this::createEnqueueSql), params);
         return generatedId;
     }
 
@@ -77,10 +78,14 @@ public class Oracle11QueueDao implements QueueDao {
     public boolean deleteTask(@Nonnull QueueLocation location, long taskId) {
         requireNonNull(location);
 
-        int updatedRows = jdbcTemplate.update(deleteSqlCache.computeIfAbsent(location, this::createDeleteSql),
-                new MapSqlParameterSource()
-                        .addValue("id", taskId)
-                        .addValue("queueName", location.getQueueId().asString()));
+        final Map<String, Object> mapSqlParameterSource = new HashMap<String, Object>() {
+            {
+                put("id", taskId);
+                put("queueName", location.getQueueId().asString());
+            }
+        };
+        int updatedRows = database.update(deleteSqlCache.computeIfAbsent(location, this::createDeleteSql),
+                mapSqlParameterSource);
         return updatedRows != 0;
     }
 
@@ -88,11 +93,15 @@ public class Oracle11QueueDao implements QueueDao {
     public boolean reenqueue(@Nonnull QueueLocation location, long taskId, @Nonnull Duration executionDelay) {
         requireNonNull(location);
         requireNonNull(executionDelay);
-        int updatedRows = jdbcTemplate.update(reenqueueSqlCache.computeIfAbsent(location, this::createReenqueueSql),
-                new MapSqlParameterSource()
-                        .addValue("id", taskId)
-                        .addValue("queueName", location.getQueueId().asString())
-                        .addValue("executionDelay", executionDelay.getSeconds()));
+        final Map<String, Object> mapSqlParameterSource = new HashMap<String, Object>() {
+            {
+                put("id", taskId);
+                put("queueName", location.getQueueId().asString());
+                put("executionDelay", executionDelay.getSeconds());
+            }
+        };
+        int updatedRows = database.update(reenqueueSqlCache.computeIfAbsent(location, this::createReenqueueSql),
+                mapSqlParameterSource);
         return updatedRows != 0;
     }
 

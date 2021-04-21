@@ -1,10 +1,12 @@
 package ru.yoomoney.tech.dbqueue.config;
 
-import org.springframework.jdbc.core.JdbcOperations;
-import org.springframework.transaction.support.TransactionOperations;
+import ru.yoomoney.tech.dbqueue.dao.Database;
 import ru.yoomoney.tech.dbqueue.dao.QueueDao;
 
 import javax.annotation.Nonnull;
+import javax.sql.DataSource;
+
+import java.util.function.Supplier;
 
 import static java.util.Objects.requireNonNull;
 
@@ -21,9 +23,7 @@ public class QueueShard {
     @Nonnull
     private final QueueShardId shardId;
     @Nonnull
-    private final JdbcOperations jdbcTemplate;
-    @Nonnull
-    private final TransactionOperations transactionTemplate;
+    private final Database database;
     @Nonnull
     private final QueueTableSchema queueTableSchema;
     @Nonnull
@@ -32,23 +32,20 @@ public class QueueShard {
     /**
      * Constructor
      *
-     * @param databaseDialect     Database type (dialect)
-     * @param queueTableSchema    Queue table scheme.
-     * @param shardId             Shard identifier.
-     * @param jdbcTemplate        Reference to Spring JDBC template.
-     * @param transactionTemplate Reference to Spring Transaction template.
+     * @param databaseDialect  Database type (dialect)
+     * @param queueTableSchema Queue table scheme.
+     * @param shardId          Shard identifier.
+     * @param database         Reference to JDBC data source
      */
     public QueueShard(@Nonnull DatabaseDialect databaseDialect,
                       @Nonnull QueueTableSchema queueTableSchema,
                       @Nonnull QueueShardId shardId,
-                      @Nonnull JdbcOperations jdbcTemplate,
-                      @Nonnull TransactionOperations transactionTemplate) {
+                      @Nonnull Database database) {
         this.databaseDialect = requireNonNull(databaseDialect);
         this.shardId = requireNonNull(shardId);
-        this.jdbcTemplate = requireNonNull(jdbcTemplate);
-        this.transactionTemplate = requireNonNull(transactionTemplate);
+        this.database = requireNonNull(database);
         this.queueTableSchema = requireNonNull(queueTableSchema);
-        this.queueDao = QueueDao.Factory.create(databaseDialect, jdbcTemplate, queueTableSchema);
+        this.queueDao = QueueDao.Factory.create(databaseDialect, database, queueTableSchema);
     }
 
     /**
@@ -62,23 +59,13 @@ public class QueueShard {
     }
 
     /**
-     * Get reference to the Spring JDBC template for that shard.
+     * Get reference to the data source for that shard.
      *
-     * @return Reference to Spring JDBC template.
+     * @return Reference to JDBC data source.
      */
     @Nonnull
-    public JdbcOperations getJdbcTemplate() {
-        return jdbcTemplate;
-    }
-
-    /**
-     * Get reference to the Spring Transaction template for that shard.
-     *
-     * @return Reference to Spring Transaction template.
-     */
-    @Nonnull
-    public TransactionOperations getTransactionTemplate() {
-        return transactionTemplate;
+    public Database getDatabase() {
+        return database;
     }
 
     /**
@@ -109,5 +96,10 @@ public class QueueShard {
     @Nonnull
     public QueueTableSchema getQueueTableSchema() {
         return queueTableSchema;
+    }
+
+
+    public <T> T transact(Supplier<T> runWithinTransaction) {
+        return database.transact(runWithinTransaction);
     }
 }

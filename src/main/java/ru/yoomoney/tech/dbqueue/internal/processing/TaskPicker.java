@@ -44,7 +44,7 @@ public class TaskPicker {
                       PickTaskSettings pickTaskSettings) {
         this(queueShard, taskLifecycleListener, millisTimeProvider,
                 QueuePickTaskDao.Factory.create(queueShard.getDatabaseDialect(),
-                        queueShard.getQueueTableSchema(), queueShard.getJdbcTemplate(), pickTaskSettings));
+                        queueShard.getQueueTableSchema(), queueShard.getDatabase(), pickTaskSettings));
     }
 
     /**
@@ -75,8 +75,7 @@ public class TaskPicker {
     public TaskRecord pickTask(@Nonnull QueueConsumer queueConsumer) {
         requireNonNull(queueConsumer);
         long startPickTaskTime = millisTimeProvider.getMillis();
-        TaskRecord taskRecord = queueShard.getTransactionTemplate()
-                .execute(status -> pickTaskDao.pickTask(queueConsumer.getQueueConfig().getLocation()));
+        TaskRecord taskRecord = queueShard.transact(() -> pickTaskDao.pickTask(queueConsumer.getQueueConfig().getLocation()));
         if (taskRecord == null) {
             return null;
         }

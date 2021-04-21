@@ -21,7 +21,7 @@ public class DefaultOracle11QueueDaoTest extends QueueDaoTest {
     }
 
     public DefaultOracle11QueueDaoTest() {
-        super(new Oracle11QueueDao(OracleDatabaseInitializer.getJdbcTemplate(), OracleDatabaseInitializer.DEFAULT_SCHEMA),
+        super(new Oracle11QueueDao(OracleDatabaseInitializer.getDatabase(), OracleDatabaseInitializer.DEFAULT_SCHEMA),
                 OracleDatabaseInitializer.DEFAULT_TABLE_NAME, OracleDatabaseInitializer.DEFAULT_SCHEMA,
                 OracleDatabaseInitializer.getJdbcTemplate(), OracleDatabaseInitializer.getTransactionTemplate());
     }

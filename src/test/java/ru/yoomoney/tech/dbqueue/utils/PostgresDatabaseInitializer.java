@@ -1,13 +1,11 @@
 package ru.yoomoney.tech.dbqueue.utils;
 
 import org.postgresql.ds.PGSimpleDataSource;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.TestcontainersConfiguration;
 import ru.yoomoney.tech.dbqueue.config.QueueTableSchema;
+import ru.yoomoney.tech.dbqueue.dao.Database;
+import ru.yoomoney.tech.dbqueue.dao.spring.SpringJdbcBasedDatabase;
 
 import java.util.Collections;
 import java.util.Optional;
@@ -77,16 +75,15 @@ public class PostgresDatabaseInitializer {
             "  ON %s (queue_name, next_process_at, id DESC);\n" +
             "\n";
 
-    private static JdbcTemplate pgJdbcTemplate;
-    private static TransactionTemplate pgTransactionTemplate;
+    private static SpringJdbcBasedDatabase database;
 
     public static synchronized void initialize() {
-        if (pgJdbcTemplate != null) {
+        if (database != null) {
             return;
         }
 
         String ryukImage = Optional.ofNullable(System.getProperty("testcontainers.ryuk.container.image"))
-                                .orElse("quay.io/testcontainers/ryuk:0.2.3");
+                .orElse("quay.io/testcontainers/ryuk:0.2.3");
         TestcontainersConfiguration.getInstance()
                 .updateGlobalConfig("ryuk.container.image", ryukImage);
 
@@ -100,10 +97,7 @@ public class PostgresDatabaseInitializer {
         dataSource.setUrl(dbContainer.getJdbcUrl());
         dataSource.setPassword(dbContainer.getPassword());
         dataSource.setUser(dbContainer.getUsername());
-        pgJdbcTemplate = new JdbcTemplate(dataSource);
-        pgTransactionTemplate = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
-        pgTransactionTemplate.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
-        pgTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+        database = new SpringJdbcBasedDatabase(dataSource);
 
         executeDdl("CREATE SEQUENCE tasks_seq START 1");
         createTable(PG_DEFAULT_WO_INC_TABLE_DDL, DEFAULT_TABLE_NAME_WO_INC);
@@ -122,19 +116,14 @@ public class PostgresDatabaseInitializer {
 
     private static void executeDdl(String ddl) {
         initialize();
-        getTransactionTemplate().execute(status -> {
-            getJdbcTemplate().execute(ddl);
-            return new Object();
+        database.transact(() -> {
+            database.update(ddl, Collections.emptyMap());
+            return null;
         });
     }
 
-    public static JdbcTemplate getJdbcTemplate() {
-        initialize();
-        return pgJdbcTemplate;
+    public static Database getDatabase() {
+        return database;
     }
 
-    public static TransactionTemplate getTransactionTemplate() {
-        initialize();
-        return pgTransactionTemplate;
-    }
 }

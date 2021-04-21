@@ -44,8 +44,7 @@ public class ExampleConfiguration {
         QueueShard shard = new QueueShard(DatabaseDialect.POSTGRESQL,
                 QueueTableSchema.builder().build(),
                 new QueueShardId("main"),
-                PostgresDatabaseInitializer.getJdbcTemplate(),
-                PostgresDatabaseInitializer.getTransactionTemplate());
+                PostgresDatabaseInitializer.getDataSource());
 
         QueueConfig config = new QueueConfig(QueueLocation.builder().withTableName("example_task_table")
                 .withQueueId(new QueueId("example_queue")).build(),

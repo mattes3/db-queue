@@ -1,20 +1,19 @@
 package ru.yoomoney.tech.dbqueue.internal.pick;
 
-import org.springframework.jdbc.core.JdbcOperations;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import ru.yoomoney.tech.dbqueue.api.TaskRecord;
 import ru.yoomoney.tech.dbqueue.config.QueueTableSchema;
+import ru.yoomoney.tech.dbqueue.dao.Database;
 import ru.yoomoney.tech.dbqueue.settings.QueueLocation;
 import ru.yoomoney.tech.dbqueue.settings.TaskRetryType;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -33,21 +32,19 @@ public class PostgresQueuePickTaskDao implements QueuePickTaskDao {
 
     private final Map<QueueLocation, String> pickTaskSqlCache = new ConcurrentHashMap<>();
 
-    private final NamedParameterJdbcTemplate jdbcTemplate;
     private final QueueTableSchema queueTableSchema;
     private final PickTaskSettings pickTaskSettings;
+    private final Database database;
 
     /**
-     * Конструктор
+     * Constructor
      *
-     * @param jdbcTemplate     spring jdbc template
-     * @param queueTableSchema схема таблицы очередей
-     * @param pickTaskSettings настройки выборки задач
+     * @param database         the database on which this DAO operates
+     * @param queueTableSchema queue table schema
+     * @param pickTaskSettings task selection settings
      */
-    public PostgresQueuePickTaskDao(@Nonnull JdbcOperations jdbcTemplate,
-                                    @Nonnull QueueTableSchema queueTableSchema,
-                                    @Nonnull PickTaskSettings pickTaskSettings) {
-        this.jdbcTemplate = new NamedParameterJdbcTemplate(requireNonNull(jdbcTemplate));
+    public PostgresQueuePickTaskDao(Database database, @Nonnull QueueTableSchema queueTableSchema, @Nonnull PickTaskSettings pickTaskSettings) {
+        this.database = database;
         this.queueTableSchema = requireNonNull(queueTableSchema);
         this.pickTaskSettings = requireNonNull(pickTaskSettings);
     }
@@ -56,38 +53,36 @@ public class PostgresQueuePickTaskDao implements QueuePickTaskDao {
     @Nullable
     public TaskRecord pickTask(@Nonnull QueueLocation location) {
         requireNonNull(location);
-        MapSqlParameterSource placeholders = new MapSqlParameterSource()
-                .addValue("queueName", location.getQueueId().asString())
-                .addValue("retryInterval", pickTaskSettings.getRetryInterval().getSeconds());
+        Map<String, Object> placeholders = new HashMap<String, Object>() {
+            {
+                put("queueName", location.getQueueId().asString());
+                put("retryInterval", pickTaskSettings.getRetryInterval().getSeconds());
+            }
+        };
 
-        return jdbcTemplate.execute(pickTaskSqlCache.computeIfAbsent(location, this::createPickTaskSql),
+        return database.selectOne(pickTaskSqlCache.computeIfAbsent(location, this::createPickTaskSql),
                 placeholders,
-                (PreparedStatement ps) -> {
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (!rs.next()) {
-                            //noinspection ReturnOfNull
-                            return null;
+                rs -> {
+                    Map<String, String> additionalData = new LinkedHashMap<>();
+                    queueTableSchema.getExtFields().forEach(key -> {
+                        try {
+                            additionalData.put(key, rs.getString(key));
                         }
-
-                        Map<String, String> additionalData = new LinkedHashMap<>();
-                        queueTableSchema.getExtFields().forEach(key -> {
-                            try {
-                                additionalData.put(key, rs.getString(key));
-                            } catch (SQLException e) {
-                                throw new RuntimeException(e);
-                            }
-                        });
-                        return TaskRecord.builder()
-                                .withId(rs.getLong(queueTableSchema.getIdField()))
-                                .withCreatedAt(getZonedDateTime(rs, queueTableSchema.getCreatedAtField()))
-                                .withNextProcessAt(getZonedDateTime(rs, queueTableSchema.getNextProcessAtField()))
-                                .withPayload(rs.getString(queueTableSchema.getPayloadField()))
-                                .withAttemptsCount(rs.getLong(queueTableSchema.getAttemptField()))
-                                .withReenqueueAttemptsCount(rs.getLong(queueTableSchema.getReenqueueAttemptField()))
-                                .withTotalAttemptsCount(rs.getLong(queueTableSchema.getTotalAttemptField()))
-                                .withExtData(additionalData).build();
-                    }
-                });
+                        catch (SQLException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+                    return TaskRecord.builder()
+                            .withId(rs.getLong(queueTableSchema.getIdField()))
+                            .withCreatedAt(getZonedDateTime(rs, queueTableSchema.getCreatedAtField()))
+                            .withNextProcessAt(getZonedDateTime(rs, queueTableSchema.getNextProcessAtField()))
+                            .withPayload(rs.getString(queueTableSchema.getPayloadField()))
+                            .withAttemptsCount(rs.getLong(queueTableSchema.getAttemptField()))
+                            .withReenqueueAttemptsCount(rs.getLong(queueTableSchema.getReenqueueAttemptField()))
+                            .withTotalAttemptsCount(rs.getLong(queueTableSchema.getTotalAttemptField()))
+                            .withExtData(additionalData).build();
+                }
+        );
     }
 
     private String createPickTaskSql(@Nonnull QueueLocation location) {

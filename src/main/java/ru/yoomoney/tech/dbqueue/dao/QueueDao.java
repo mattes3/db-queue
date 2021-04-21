@@ -1,6 +1,5 @@
 package ru.yoomoney.tech.dbqueue.dao;
 
-import org.springframework.jdbc.core.JdbcOperations;
 import ru.yoomoney.tech.dbqueue.api.EnqueueParams;
 import ru.yoomoney.tech.dbqueue.config.DatabaseDialect;
 import ru.yoomoney.tech.dbqueue.config.QueueTableSchema;
@@ -55,23 +54,23 @@ public interface QueueDao {
          * Create a new instance of database-specific DAO based on database type (dialect).
          *
          * @param databaseDialect  Database type (dialect).
-         * @param jdbcTemplate     Reference to Spring JDBC template.
+         * @param database         Reference to the abstraction of a database
          * @param queueTableSchema Queue table scheme.
          * @return New database-specific DAO instance.
          */
         public static QueueDao create(@Nonnull DatabaseDialect databaseDialect,
-                                      @Nonnull JdbcOperations jdbcTemplate,
+                                      @Nonnull Database database,
                                       @Nonnull QueueTableSchema queueTableSchema) {
             requireNonNull(databaseDialect);
-            requireNonNull(jdbcTemplate);
+            requireNonNull(database);
             requireNonNull(queueTableSchema);
             switch (databaseDialect) {
                 case POSTGRESQL:
-                    return new PostgresQueueDao(jdbcTemplate, queueTableSchema);
+                    return new PostgresQueueDao(database, queueTableSchema);
                 case MSSQL:
-                    return new MssqlQueueDao(jdbcTemplate, queueTableSchema);
+                    return new MssqlQueueDao(database, queueTableSchema);
                 case ORACLE_11G:
-                    return new Oracle11QueueDao(jdbcTemplate, queueTableSchema);
+                    return new Oracle11QueueDao(database, queueTableSchema);
                 default:
                     throw new IllegalArgumentException("unsupported database kind: " + databaseDialect);
             }

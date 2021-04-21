@@ -37,7 +37,7 @@ public class StringQueueProducer implements QueueProducer<String> {
                 .withPayload(getPayloadTransformer().fromObject(enqueueParams.getPayload()))
                 .withExecutionDelay(enqueueParams.getExecutionDelay())
                 .withExtData(enqueueParams.getExtData());
-        return requireNonNull(queueShard.getTransactionTemplate().execute(status ->
+        return requireNonNull(queueShard.transact(() ->
                 queueShard.getQueueDao().enqueue(queueConfig.getLocation(), rawEnqueueParams)));
     }
 

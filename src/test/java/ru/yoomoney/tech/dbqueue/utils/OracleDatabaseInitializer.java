@@ -2,13 +2,11 @@ package ru.yoomoney.tech.dbqueue.utils;
 
 import oracle.jdbc.pool.OracleConnectionPoolDataSource;
 import oracle.jdbc.pool.OracleDataSource;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.OracleContainer;
 import org.testcontainers.utility.TestcontainersConfiguration;
 import ru.yoomoney.tech.dbqueue.config.QueueTableSchema;
+import ru.yoomoney.tech.dbqueue.dao.Database;
+import ru.yoomoney.tech.dbqueue.dao.spring.SpringJdbcBasedDatabase;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -24,6 +22,8 @@ import java.util.TimeZone;
  */
 public class OracleDatabaseInitializer {
 
+
+    private static Database database;
 
     static {
         // Oracle image has old timezone files so we make test independent of timezone
@@ -69,11 +69,8 @@ public class OracleDatabaseInitializer {
             "  total_attempt     NUMBER(38)                  DEFAULT 0\n" +
             ")";
 
-    private static JdbcTemplate oraJdbcTemplate;
-    private static TransactionTemplate oraTransactionTemplate;
-
     public static synchronized void initialize() {
-        if (oraJdbcTemplate != null) {
+        if (database != null) {
             return;
         }
 
@@ -88,12 +85,7 @@ public class OracleDatabaseInitializer {
         OracleContainer dbContainer = new OracleContainer(oracleImage);
         dbContainer.start();
         addUserAndSchema(dbContainer, "oracle_test");
-        OracleDataSource dataSource = getDataSource(dbContainer, "oracle_test");
-
-        oraJdbcTemplate = new JdbcTemplate(dataSource);
-        oraTransactionTemplate = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
-        oraTransactionTemplate.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
-        oraTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+        database = new SpringJdbcBasedDatabase(getDataSource(dbContainer, "oracle_test"));
 
         executeDdl("CREATE SEQUENCE tasks_seq START WITH 1");
         createTable(ORA_DEFAULT_TABLE_DDL, DEFAULT_TABLE_NAME);
@@ -104,7 +96,8 @@ public class OracleDatabaseInitializer {
         OracleConnectionPoolDataSource dataSource;
         try {
             dataSource = new OracleConnectionPoolDataSource();
-        } catch (SQLException e) {
+        }
+        catch (SQLException e) {
             throw new IllegalStateException(e);
         }
 
@@ -122,7 +115,8 @@ public class OracleDatabaseInitializer {
                         try (PreparedStatement statement = connection.prepareStatement(s)) {
                             statement.executeUpdate();
                         }
-                    } catch (Exception ex) {
+                    }
+                    catch (Exception ex) {
                         throw new IllegalStateException(ex);
                     }
                 });
@@ -135,19 +129,13 @@ public class OracleDatabaseInitializer {
 
     private static void executeDdl(String ddl) {
         initialize();
-        getTransactionTemplate().execute(status -> {
-            getJdbcTemplate().execute(ddl);
-            return new Object();
+        database.transact(() -> {
+            database.update(ddl);
         });
     }
 
-    public static JdbcTemplate getJdbcTemplate() {
-        initialize();
-        return oraJdbcTemplate;
-    }
 
-    public static TransactionTemplate getTransactionTemplate() {
-        initialize();
-        return oraTransactionTemplate;
+    public static Database getDatabase() {
+        return database;
     }
 }

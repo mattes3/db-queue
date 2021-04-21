@@ -1,15 +1,13 @@
 package ru.yoomoney.tech.dbqueue.dao;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import org.springframework.jdbc.core.JdbcOperations;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import ru.yoomoney.tech.dbqueue.api.EnqueueParams;
 import ru.yoomoney.tech.dbqueue.config.QueueTableSchema;
 import ru.yoomoney.tech.dbqueue.settings.QueueLocation;
 
 import javax.annotation.Nonnull;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -29,20 +27,19 @@ public class PostgresQueueDao implements QueueDao {
     private final Map<QueueLocation, String> reenqueueSqlCache = new ConcurrentHashMap<>();
 
     @Nonnull
-    private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final Database database;
     @Nonnull
     private final QueueTableSchema queueTableSchema;
 
     /**
      * Constructor
      *
-     * @param jdbcTemplate     Reference to Spring JDBC template.
+     * @param database         Reference to JDBC database for the queue.
      * @param queueTableSchema Queue table scheme.
      */
-    public PostgresQueueDao(@Nonnull JdbcOperations jdbcTemplate,
-                            @Nonnull QueueTableSchema queueTableSchema) {
+    public PostgresQueueDao(@Nonnull Database database, @Nonnull QueueTableSchema queueTableSchema) {
+        this.database = requireNonNull(database);
         this.queueTableSchema = requireNonNull(queueTableSchema);
-        this.jdbcTemplate = new NamedParameterJdbcTemplate(requireNonNull(jdbcTemplate));
     }
 
     @Override
@@ -51,15 +48,19 @@ public class PostgresQueueDao implements QueueDao {
         requireNonNull(location);
         requireNonNull(enqueueParams);
 
-        MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("queueName", location.getQueueId().asString())
-                .addValue("payload", enqueueParams.getPayload())
-                .addValue("executionDelay", enqueueParams.getExecutionDelay().getSeconds());
+        Map<String, Object> params = new HashMap<String, Object>() {
+            {
+                put("queueName", location.getQueueId().asString());
+                put("payload", enqueueParams.getPayload());
+                put("executionDelay", enqueueParams.getExecutionDelay().getSeconds());
+            }
+        };
 
-        queueTableSchema.getExtFields().forEach(paramName -> params.addValue(paramName, null));
-        enqueueParams.getExtData().forEach(params::addValue);
-        return requireNonNull(jdbcTemplate.queryForObject(
-                enqueueSqlCache.computeIfAbsent(location, this::createEnqueueSql), params, Long.class));
+        queueTableSchema.getExtFields().forEach(paramName -> params.put(paramName, null));
+        params.putAll(enqueueParams.getExtData());
+
+        return requireNonNull(database.insertOne(
+                enqueueSqlCache.computeIfAbsent(location, this::createEnqueueSql), params));
     }
 
 
@@ -67,23 +68,28 @@ public class PostgresQueueDao implements QueueDao {
     public boolean deleteTask(@Nonnull QueueLocation location, long taskId) {
         requireNonNull(location);
 
-        int updatedRows = jdbcTemplate.update(deleteSqlCache.computeIfAbsent(location, this::createDeleteSql),
-                new MapSqlParameterSource()
-                        .addValue("id", taskId)
-                        .addValue("queueName", location.getQueueId().asString()));
-        return updatedRows != 0;
+        final Map<String, Object> params = new HashMap<String, Object>() {{
+            put("id", taskId);
+            put("queueName", location.getQueueId().asString());
+        }};
+
+        int updatedRows = database.update(deleteSqlCache.computeIfAbsent(location, this::createDeleteSql), params);
+        return updatedRows > 0L;
     }
 
     @Override
     public boolean reenqueue(@Nonnull QueueLocation location, long taskId, @Nonnull Duration executionDelay) {
         requireNonNull(location);
         requireNonNull(executionDelay);
-        int updatedRows = jdbcTemplate.update(reenqueueSqlCache.computeIfAbsent(location, this::createReenqueueSql),
-                new MapSqlParameterSource()
-                        .addValue("id", taskId)
-                        .addValue("queueName", location.getQueueId().asString())
-                        .addValue("executionDelay", executionDelay.getSeconds()));
-        return updatedRows != 0;
+
+        final Map<String, Object> params = new HashMap<String, Object>() {{
+            put("id", taskId);
+            put("queueName", location.getQueueId().asString());
+            put("executionDelay", executionDelay.getSeconds());
+        }};
+
+        int updatedRows = database.update(reenqueueSqlCache.computeIfAbsent(location, this::createReenqueueSql), params);
+        return updatedRows > 0L;
     }
 
     private String createEnqueueSql(@Nonnull QueueLocation location) {

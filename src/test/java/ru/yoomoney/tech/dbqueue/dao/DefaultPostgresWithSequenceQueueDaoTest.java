@@ -19,9 +19,9 @@ public class DefaultPostgresWithSequenceQueueDaoTest extends QueueDaoTest {
     }
 
     public DefaultPostgresWithSequenceQueueDaoTest() {
-        super(new PostgresQueueDao(PostgresDatabaseInitializer.getJdbcTemplate(), PostgresDatabaseInitializer.DEFAULT_SCHEMA),
+        super(new PostgresQueueDao(PostgresDatabaseInitializer.getDatabase(), PostgresDatabaseInitializer.DEFAULT_SCHEMA),
                 PostgresDatabaseInitializer.DEFAULT_TABLE_NAME_WO_INC, PostgresDatabaseInitializer.DEFAULT_SCHEMA,
-                PostgresDatabaseInitializer.getJdbcTemplate(), PostgresDatabaseInitializer.getTransactionTemplate());
+                PostgresDatabaseInitializer.getDatabase());
     }
 
     protected QueueLocation generateUniqueLocation() {

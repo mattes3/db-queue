@@ -4,13 +4,16 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.CallableStatementCallback;
 import org.springframework.jdbc.core.JdbcOperations;
+import org.springframework.jdbc.core.JdbcTemplate;
 import ru.yoomoney.tech.dbqueue.api.TaskRecord;
 import ru.yoomoney.tech.dbqueue.config.QueueTableSchema;
+import ru.yoomoney.tech.dbqueue.dao.Database;
 import ru.yoomoney.tech.dbqueue.settings.QueueLocation;
 import ru.yoomoney.tech.dbqueue.settings.TaskRetryType;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import javax.sql.DataSource;
 import java.sql.CallableStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -35,19 +38,16 @@ public class Oracle11QueuePickTaskDao implements QueuePickTaskDao {
     private final Map<QueueLocation, String> pickTaskSqlCache = new ConcurrentHashMap<>();
 
     @Nonnull
-    private final JdbcOperations jdbcTemplate;
+    private final Database dataSource;
     @Nonnull
     private final QueueTableSchema queueTableSchema;
     @Nonnull
     private final PickTaskSettings pickTaskSettings;
 
-    public Oracle11QueuePickTaskDao(@Nonnull JdbcOperations jdbcTemplate,
-                                    @Nonnull QueueTableSchema queueTableSchema,
-                                    @Nonnull PickTaskSettings pickTaskSettings) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate);
-        this.queueTableSchema = Objects.requireNonNull(queueTableSchema);
-        this.pickTaskSettings = Objects.requireNonNull(pickTaskSettings);
-
+    public Oracle11QueuePickTaskDao(@Nonnull Database dataSource, @Nonnull QueueTableSchema queueTableSchema, @Nonnull PickTaskSettings pickTaskSettings) {
+        this.dataSource = dataSource;
+        this.queueTableSchema = queueTableSchema;
+        this.pickTaskSettings = pickTaskSettings;
     }
 
     @Nullable
