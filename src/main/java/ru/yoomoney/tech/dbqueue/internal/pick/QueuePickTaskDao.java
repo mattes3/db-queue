@@ -12,7 +12,7 @@ import javax.annotation.Nullable;
 import static java.util.Objects.requireNonNull;
 
 /**
- * Класс взаимодействия с БД для выборки задач
+ * DB interaction class for task selection
  *
  * @author Oleg Kandaurov
  * @since 06.10.2019
@@ -20,27 +20,27 @@ import static java.util.Objects.requireNonNull;
 public interface QueuePickTaskDao {
 
     /**
-     * Выбрать очередную задачу из очереди
+     * Select the next task from the queue
      *
-     * @param location местоположение очереди
-     * @return задача для обработки или null если таковой не нашлось
+     * @param location queue location
+     * @return task to process or null if none was found
      */
     @Nullable
     TaskRecord pickTask(@Nonnull QueueLocation location);
 
     /**
-     * Фабрика для создания БД-специфичных DAO для выборки очередей
+     * Factory for creating database-specific DAOs for fetching queues
      */
     class Factory {
 
         /**
-         * Создать инстанс dao для выборки задач из очереди в зависимости от вида БД
+         * Create a dao instance to select tasks from the queue depending on the type of database
          *
-         * @param databaseDialect     вид базы данных
+         * @param databaseDialect  database dialect
          * @param jdbcTemplate     spring jdbc template
-         * @param queueTableSchema схема таблицы очередей
-         * @param pickTaskSettings настройки выборки задач
-         * @return dao для работы с очередями
+         * @param queueTableSchema queue table schema
+         * @param pickTaskSettings task selection settings
+         * @return dao to work with queues
          */
         public static QueuePickTaskDao create(@Nonnull DatabaseDialect databaseDialect,
                                               @Nonnull QueueTableSchema queueTableSchema,
